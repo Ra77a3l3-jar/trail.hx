@@ -37,7 +37,12 @@
 
 (define *trail-home* (trail-env-var "HOME"))
 
-(define (trail-data-dir) (string-append *trail-home* "/.local/share/steel/cogs/trail"))
+;; falls back to the XDG data dir if $STEEL_HOME isn't set
+(define *trail-steel-home*
+  (let ([v (trail-env-var "STEEL_HOME")])
+    (if (equal? v "") (string-append *trail-home* "/.local/share/steel") v)))
+
+(define (trail-data-dir) (string-append *trail-steel-home* "/cogs/trail"))
 (define (trail-data-file) (string-append (trail-data-dir) "/recent"))
 
 (define (trail-mkdir-p! path)
@@ -83,20 +88,36 @@
   (define loaded
     (filter (lambda (s) (> (string-length s) 0))
             (map trim (split-many content "\n"))))
-  ;; drop entries whose directory no longer exists, and persist the prune
-  (define alive (filter is-dir? loaded))
+  ;; drop entries whose directory no longer exists, or that are unsafe to
+  ;; ever scan like $HOME, and persist the prune
+  (define alive (filter (lambda (p) (and (is-dir? p) (not (trail-untrackable? p)))) loaded))
   (set! *trail-recent* alive)
   (when (< (length alive) (length loaded))
     (trail-save!)))
 
+;; canonicalize-path may add a trailing separator
+;; breaking equal? comparison against *trail-home* below
+(define (trail-strip-trailing-sep p)
+  (if (and (> (string-length p) 1) (ends-with? p (path-separator)))
+      (trim-end-matches p (path-separator))
+      p))
+
+;; directories that should never be recorded as a project
+;; if when recursively scanned and no .git is found, they can walk the
+;; entire home directory and hang the editor.
+(define (trail-untrackable? path)
+  (define p (trail-strip-trailing-sep path))
+  (or (equal? p *trail-home*) (equal? p "/") (equal? p "")))
+
 (define (trail-track! path)
-  (define canonical (with-handler (lambda (_) path) (canonicalize-path path)))
-  ;; remove existing entry and prepend as most recent
-  (set! *trail-recent*
-        (cons canonical (filter (lambda (p) (not (equal? p canonical))) *trail-recent*)))
-  (when (> (length *trail-recent*) *trail-max-recent*)
-    (set! *trail-recent* (trail-take *trail-recent* *trail-max-recent*)))
-  (trail-save!))
+  (define canonical (trail-strip-trailing-sep (with-handler (lambda (_) path) (canonicalize-path path))))
+  (unless (trail-untrackable? canonical)
+    ;; remove existing entry and prepend as most recent
+    (set! *trail-recent*
+          (cons canonical (filter (lambda (p) (not (equal? p canonical))) *trail-recent*)))
+    (when (> (length *trail-recent*) *trail-max-recent*)
+      (set! *trail-recent* (trail-take *trail-recent* *trail-max-recent*)))
+    (trail-save!)))
 
 (define (trail-scan-files root)
   (define root-prefix (string-append root (path-separator)))
