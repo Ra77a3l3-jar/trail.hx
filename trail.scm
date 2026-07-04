@@ -210,6 +210,17 @@
        (string-append *trail-current-project* (path-separator)
                        (list-ref *trail-file-filtered* *trail-file-cursor*))))
 
+(define (trail-remove-current-project!)
+  (when (and *trail-active* (equal? *trail-focus* 'projects) (not (null? *trail-proj-filtered*)))
+    (define path (list-ref *trail-proj-filtered* *trail-proj-cursor*))
+    (set! *trail-recent* (filter (lambda (p) (not (equal? p path))) *trail-recent*))
+    (trail-save!)
+    (trail-refresh-projects!)
+    (set! *trail-proj-cursor* (min *trail-proj-cursor* (max 0 (- (length *trail-proj-filtered*) 1))))
+    (set! *trail-proj-window-start* 0)
+    (trail-refresh-files-for-highlighted-project!)
+    (set-status! (string-append "trail: removed " (file-name path)))))
+
 (define (trail-activate!)
   (cond
     [(equal? *trail-focus* 'projects)
@@ -345,6 +356,9 @@
     [(key-event-enter? event) (trail-activate!)]
     [(key-event-backspace? event)
      (trail-backspace!)
+     event-result/consume]
+    [(and (char? ch) (char=? ch #\x) (equal? (key-event-modifier event) key-modifier-ctrl))
+     (trail-remove-current-project!)
      event-result/consume]
     [(char? ch)
      (trail-type! ch)
