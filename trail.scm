@@ -80,9 +80,14 @@
              [out (read-port-to-string p)])
         (close-input-port p)
         out)))
-  (set! *trail-recent*
-        (filter (lambda (s) (> (string-length s) 0))
-                (map trim (split-many content "\n")))))
+  (define loaded
+    (filter (lambda (s) (> (string-length s) 0))
+            (map trim (split-many content "\n"))))
+  ;; drop entries whose directory no longer exists, and persist the prune
+  (define alive (filter is-dir? loaded))
+  (set! *trail-recent* alive)
+  (when (< (length alive) (length loaded))
+    (trail-save!)))
 
 (define (trail-track! path)
   (define canonical (with-handler (lambda (_) path) (canonicalize-path path)))
