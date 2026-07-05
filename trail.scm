@@ -102,12 +102,16 @@
       (trim-end-matches p (path-separator))
       p))
 
+;; number of non empty path components
+(define (trail-path-depth p)
+  (length (filter (lambda (s) (> (string-length s) 0)) (split-many p (path-separator)))))
+
 ;; directories that should never be recorded as a project
 ;; if when recursively scanned and no .git is found, they can walk the
-;; entire home directory and hang the editor.
+;; entire home directory and hang the editor
 (define (trail-untrackable? path)
   (define p (trail-strip-trailing-sep path))
-  (or (equal? p *trail-home*) (equal? p "/") (equal? p "")))
+  (or (equal? p "") (< (trail-path-depth p) 3)))
 
 (define (trail-track! path)
   (define canonical (trail-strip-trailing-sep (with-handler (lambda (_) path) (canonicalize-path path))))
@@ -150,6 +154,10 @@
 (define *trail-file-cursor* 0)
 (define *trail-file-window-start* 0)
 
+;; project path -> file list, so moving between projects to a
+;; project already seen it doesn't check agai the disk
+(define *trail-file-cache* (hash))
+
 (define *trail-visible-height* 10)
 
 (define (trail-refresh-projects!)
@@ -160,7 +168,15 @@
 
 (define (trail-refresh-files-for-project! path)
   (set! *trail-current-project* path)
-  (set! *trail-files* (if (and path (is-dir? path)) (trail-scan-files path) '()))
+  (set! *trail-files*
+        (cond
+          [(not path) '()]
+          [(hash-contains? *trail-file-cache* path) (hash-ref *trail-file-cache* path)]
+          [(is-dir? path)
+           (define files (trail-scan-files path))
+           (set! *trail-file-cache* (hash-insert *trail-file-cache* path files))
+           files]
+          [else '()]))
   (set! *trail-file-query* "")
   (set! *trail-file-filtered* *trail-files*)
   (set! *trail-file-cursor* 0)
@@ -414,4 +430,5 @@
     (push-component! (trail-make-component))))
 
 (trail-load!)
-(trail-track! (helix-find-workspace))
+;; deferred so the cwd has settles where hx was actually launched
+(enqueue-thread-local-callback (lambda () (trail-track! (helix-find-workspace))))
