@@ -3,6 +3,7 @@
 (require "helix/components.scm")
 (require "helix/static.scm")
 (require (prefix-in helix. "helix/commands.scm"))
+(require "glyph/glyph.scm")
 
 (provide trail-open)
 
@@ -296,7 +297,8 @@
   (define right-w (- w left-w))
   (list x y w h left-w right-x right-w))
 
-(define (trail-draw-pane frame x y w h label query filtered-items total-n cursor window-start visible-h styles)
+(define (trail-draw-pane frame x y w h label query filtered-items total-n cursor window-start visible-h styles
+                          #:show-icons [show-icons #f])
   (define bg (list-ref styles 0))
   (define border (list-ref styles 1))
   (define text-style (list-ref styles 2))
@@ -328,11 +330,21 @@
       (define hl? (= idx cursor))
       (define y-row (+ y 3 row))
       (define marker (if hl? "> " "  "))
+      (define row-style (if hl? sel-style text-style))
       (when hl?
         (frame-set-string! frame content-x y-row (make-string content-w #\space) sel-style))
-      (frame-set-string! frame content-x y-row
-                         (trail-truncate (string-append marker item) content-w)
-                         (if hl? sel-style text-style))
+      (if show-icons
+          (let* ([icon (glyph-icon (file-name item))]
+                 [icon-x (+ content-x (string-length marker))]
+                 [text-x (+ icon-x (string-length icon) 1)]
+                 [avail (max 0 (- content-w (- text-x content-x)))])
+            (frame-set-string! frame content-x y-row marker row-style)
+            (frame-set-string! frame icon-x y-row icon
+                               (glyph-style (glyph-color (file-name item)) #:base row-style))
+            (frame-set-string! frame text-x y-row (trail-truncate item avail) row-style))
+          (frame-set-string! frame content-x y-row
+                             (trail-truncate (string-append marker item) content-w)
+                             row-style))
       (loop (cdr lst) (+ row 1))))
 
   (when (null? filtered-items)
@@ -368,7 +380,7 @@
                    (and *trail-current-project* (file-name *trail-current-project*))
                    *trail-file-query* *trail-file-filtered* (length *trail-files*)
                    *trail-file-cursor* *trail-file-window-start* *trail-visible-height*
-                   styles))
+                   styles #:show-icons #t))
 
 (define (trail-cursor-fn _state rect)
   (define metrics (trail-box-metrics rect))
