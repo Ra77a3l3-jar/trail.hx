@@ -4,7 +4,7 @@ trail.hx is a recent-projects picker for [Helix](https://github.com/helix-editor
 
 Jump to a recent project and browse its files side by side, without ever leaving the picker.
 
-![trail.hx preview](.github/assets/preview.png)
+![trail.hx preview](.github/assets/preview.gif)
 
 ---
 
